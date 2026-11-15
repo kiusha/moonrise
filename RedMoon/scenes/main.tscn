@@ -1,0 +1,75 @@
+[gd_scene format=3 uid="uid://ccdxt0chm3gn8"]
+
+[ext_resource type="Script" uid="uid://7bmy2s8vbnac" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
+[ext_resource type="Script" uid="uid://b586hm1qxnn3" path="res://scripts/fx.gd" id="3_fx"]
+[ext_resource type="Script" uid="uid://bpg3tt4rbrnsh" path="res://scripts/sfx.gd" id="4_sfx"]
+[ext_resource type="PackedScene" path="res://scenes/hud.tscn" id="5_hud"]
+[ext_resource type="PackedScene" path="res://scenes/menus.tscn" id="6_menus"]
+[ext_resource type="PackedScene" path="res://scenes/night_intro.tscn" id="7_night_intro"]
+[ext_resource type="PackedScene" path="res://scenes/intro_cards.tscn" id="8_intro_cards"]
+[ext_resource type="PackedScene" path="res://scenes/popups.tscn" id="9_popups"]
+
+[node name="Main" type="Node2D" unique_id=284640533]
+script = ExtResource("1_main")
+
+[node name="World" type="Node2D" parent="." unique_id=286591286]
+
+[node name="GroundLayer" type="Node2D" parent="World" unique_id=2007995443]
+
+[node name="DecalsLayer" type="Node2D" parent="World" unique_id=1995835599]
+
+[node name="Entities" type="Node2D" parent="." unique_id=1454359450]
+y_sort_enabled = true
+
+[node name="Player" parent="Entities" unique_id=1995142935 instance=ExtResource("2_player")]
+position = Vector2(1200, 729)
+
+[node name="Effects" type="Node2D" parent="." unique_id=2107108385]
+z_index = 15
+script = ExtResource("3_fx")
+
+[node name="DayNightTint" type="CanvasModulate" parent="." unique_id=2003055673]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=894826712]
+position = Vector2(1200, 729)
+limit_left = 720
+limit_top = 405
+limit_right = 1680
+limit_bottom = 945
+
+[node name="Audio" type="Node" parent="." unique_id=1984230030]
+script = ExtResource("4_sfx")
+
+[node name="SfxPlayer_0" type="AudioStreamPlayer" parent="Audio" unique_id=759567868]
+
+[node name="SfxPlayer_1" type="AudioStreamPlayer" parent="Audio" unique_id=514984432]
+
+[node name="SfxPlayer_2" type="AudioStreamPlayer" parent="Audio" unique_id=1856891449]
+
+[node name="SfxPlayer_3" type="AudioStreamPlayer" parent="Audio" unique_id=1079768227]
+
+[node name="SfxPlayer_4" type="AudioStreamPlayer" parent="Audio" unique_id=1238331977]
+
+[node name="SfxPlayer_5" type="AudioStreamPlayer" parent="Audio" unique_id=1366476038]
+
+[node name="SfxPlayer_6" type="AudioStreamPlayer" parent="Audio" unique_id=1555260859]
+
+[node name="SfxPlayer_7" type="AudioStreamPlayer" parent="Audio" unique_id=969648898]
+
+[node name="SfxPlayer_8" type="AudioStreamPlayer" parent="Audio" unique_id=2050232670]
+
+[node name="SfxPlayer_9" type="AudioStreamPlayer" parent="Audio" unique_id=1533017677]
+
+[node name="UI" parent="." unique_id=378063465 instance=ExtResource("5_hud")]
+
+[node name="Menus" parent="." unique_id=165832010 instance=ExtResource("6_menus")]
+visible = true
+
+[node name="NightIntro" parent="." unique_id=135672000 instance=ExtResource("7_night_intro")]
+visible = true
+
+[node name="IntroCards" parent="." unique_id=1806106372 instance=ExtResource("8_intro_cards")]
+visible = true
+
+[node name="Popups" parent="." unique_id=1279022440 instance=ExtResource("9_popups")]

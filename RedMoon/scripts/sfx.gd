@@ -1,0 +1,173 @@
+class_name Sfx
+extends Node
+
+# synth 8-bit bleeps generated on startup so we dont need external wav files
+
+const SAMPLE_RATE := 22050
+const POOL_SIZE := 10
+
+var muted: bool = false
+
+var _streams: Dictionary = {}
+var _players: Array[AudioStreamPlayer] = []
+var _next_player: int = 0
+
+
+func _ready() -> void:
+	_players.clear()
+	for child in get_children():
+		if child is AudioStreamPlayer:
+			_players.append(child as AudioStreamPlayer)
+	while _players.size() < POOL_SIZE:
+		var p = AudioStreamPlayer.new()
+		p.name = "SfxPlayer_%d" % _players.size()
+		add_child(p)
+		_players.append(p)
+	_build_sounds()
+
+
+func toggle_mute() -> bool:
+	muted = not muted
+	if muted:
+		for p in _players:
+			p.stop()
+	return muted
+
+
+func play(sound_name: String, volume_db: float = -8.0) -> void:
+	if muted or not _streams.has(sound_name) or _players.is_empty():
+		return
+	var player = _players[_next_player]
+	_next_player = (_next_player + 1) % _players.size()
+	player.stream = _streams[sound_name]
+	player.volume_db = volume_db
+	player.play()
+
+
+func _build_sounds() -> void:
+	_streams["swing"] = _make_sweep(0.085, 420.0, 160.0, 0.25, 0.35)
+	_streams["hit"] = _make_sweep(0.11, 200.0, 62.0, 0.55, 0.42)
+	_streams["struct_hit"] = _make_sweep(0.16, 130.0, 46.0, 0.65, 0.48)
+	_streams["player_hit"] = _make_sweep(0.15, 340.0, 120.0, 0.25, 0.45)
+	_streams["pickup"] = _make_notes([523.0, 784.0], 0.055, 0.38)
+	_streams["dropoff"] = _make_notes([330.0, 440.0, 587.0], 0.055, 0.36)
+	_streams["bounce"] = _make_bounce(0.32)
+	_streams["blood_moon"] = _make_blood_moon(0.72)
+	_streams["fence_rebuilt"] = _make_notes([392.0, 523.0, 659.0, 784.0], 0.05, 0.38)
+	_streams["ui_blip"] = _make_sweep(0.06, 260.0, 200.0, 0.0, 0.28)
+	_streams["bow_shoot"] = _make_sweep(0.075, 760.0, 290.0, 0.20, 0.32)
+	_streams["bow_empty"] = _make_sweep(0.05, 180.0, 140.0, 0.10, 0.26)
+	_streams["bow_reload"] = _make_notes([294.0, 392.0, 494.0], 0.05, 0.30)
+	_streams["door_creak"] = _make_sweep(0.22, 160.0, 240.0, 0.35, 0.32)
+	_streams["door_bump"] = _make_sweep(0.09, 110.0, 70.0, 0.45, 0.40)
+	_streams["crumble"] = _make_blood_moon(0.95)
+	_streams["heartbeat"] = _make_notes([72.0, 58.0], 0.14, 0.42)
+	_streams["toast"] = _make_notes([523.0, 659.0, 784.0, 1046.0], 0.065, 0.34)
+	_streams["upgrade"] = _make_notes([440.0, 554.0, 659.0], 0.055, 0.38)
+	_streams["trap_trigger"] = _make_sweep(0.12, 540.0, 120.0, 0.50, 0.40)
+	_streams["meteor_impact"] = _make_sweep(0.38, 120.0, 36.0, 0.78, 0.52)
+	_streams["dog_bark"] = _make_notes([480.0, 620.0], 0.06, 0.34)
+	_streams["ghost_appear"] = _make_sweep(0.42, 680.0, 220.0, 0.42, 0.24)
+	_streams["ghost_slash"] = _make_sweep(0.14, 520.0, 140.0, 0.38, 0.30)
+	_streams["boomerang_throw"] = _make_sweep(0.16, 360.0, 740.0, 0.18, 0.30)
+	_streams["boomerang_catch"] = _make_notes([520.0, 680.0], 0.045, 0.28)
+	_streams["wood_chop"] = _make_sweep(0.12, 220.0, 95.0, 0.46, 0.34)
+
+
+func _make_wav(samples: PackedByteArray) -> AudioStreamWAV:
+	var wav = AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_8_BITS
+	wav.mix_rate = SAMPLE_RATE
+	wav.stereo = false
+	wav.data = samples
+	return wav
+
+
+func _to_signed_byte(sample_val: float) -> int:
+	return clampi(roundi(sample_val * 127.0), -127, 127) & 0xFF
+
+
+func _make_sweep(
+	duration: float,
+	freq_start: float,
+	freq_end: float,
+	noise_mix: float,
+	gain: float
+) -> AudioStreamWAV:
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
+	data.resize(count)
+	var phase = 0.0
+	var rng = RandomNumberGenerator.new()
+	rng.seed = int(freq_start * 100.0) + count
+
+	for i in range(count):
+		var t = float(i) / float(count)
+		var freq = lerpf(freq_start, freq_end, t)
+		phase += TAU * freq / float(SAMPLE_RATE)
+		var sq = 1.0 if sin(phase) >= 0.0 else -1.0
+		var nz = rng.randf_range(-1.0, 1.0)
+		var env = minf(1.0, t * 20.0) * (1.0 - t)
+		data[i] = _to_signed_byte((sq * (1.0 - noise_mix) + nz * noise_mix) * env * gain)
+
+	return _make_wav(data)
+
+
+func _make_notes(freqs: Array, note_len: float, gain: float) -> AudioStreamWAV:
+	var note_samples = maxi(1, int(note_len * float(SAMPLE_RATE)))
+	var total = note_samples * freqs.size()
+	var data = PackedByteArray()
+	data.resize(total)
+	var phase = 0.0
+
+	for n_idx in range(freqs.size()):
+		var freq = float(freqs[n_idx])
+		for j in range(note_samples):
+			var lt = float(j) / float(note_samples)
+			phase += TAU * freq / float(SAMPLE_RATE)
+			var sq = 1.0 if sin(phase) >= 0.0 else -1.0
+			var env = minf(1.0, lt * 18.0) * (1.0 - lt * 0.75)
+			data[n_idx * note_samples + j] = _to_signed_byte(sq * env * gain)
+
+	return _make_wav(data)
+
+
+func _make_bounce(duration: float) -> AudioStreamWAV:
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
+	data.resize(count)
+	var phase = 0.0
+
+	for i in range(count):
+		var t = float(i) / float(count)
+		var freq = 240.0 + sin(t * PI) * 520.0 + sin(t * TAU * 8.0) * 35.0
+		phase += TAU * freq / float(SAMPLE_RATE)
+		var wave = (1.0 if sin(phase) >= 0.0 else -1.0) * 0.65 + sin(phase * 0.5) * 0.35
+		var env = minf(1.0, t * 14.0) * (1.0 - t * 0.85)
+		data[i] = _to_signed_byte(wave * env * 0.42)
+
+	return _make_wav(data)
+
+
+func _make_blood_moon(duration: float) -> AudioStreamWAV:
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
+	data.resize(count)
+	var p1 = 0.0
+	var p2 = 0.0
+	var rng = RandomNumberGenerator.new()
+	rng.seed = 666
+
+	for i in range(count):
+		var t = float(i) / float(count)
+		var f1 = lerpf(98.0, 74.0, t)
+		var f2 = lerpf(146.0, 108.0, t)
+		p1 += TAU * f1 / float(SAMPLE_RATE)
+		p2 += TAU * f2 / float(SAMPLE_RATE)
+		var s1 = 1.0 if sin(p1) >= 0.0 else -1.0
+		var s2 = 1.0 if sin(p2) >= 0.0 else -1.0
+		var rumble = rng.randf_range(-1.0, 1.0) * 0.18
+		var env = minf(1.0, t * 6.0) * (1.0 - maxf(0.0, (t - 0.55) / 0.45))
+		data[i] = _to_signed_byte((s1 * 0.5 + s2 * 0.35 + rumble) * env * 0.48)
+
+	return _make_wav(data)

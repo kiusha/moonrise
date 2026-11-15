@@ -1,0 +1,223 @@
+class_name Trap
+extends Node2D
+
+signal triggered(trap: Trap, enemy: Node2D)
+signal broken(trap: Trap)
+
+var trap_type: String = "trap_spike"
+var triggers_left: int = 5
+var hp: int = 25
+var max_hp: int = 25
+var radius: float = 12.0
+var cooldown_left: float = 0.0
+var attract_radius: float = 0.0
+
+var _sprite: Sprite2D
+var _anim_sprite: AnimatedSprite2D
+var _hp_bar: ColorRect
+var _pulse_time: float = 0.0
+var _flash_time: float = 0.0
+var _break_delay: float = -1.0
+
+
+func setup(kind: String, world_pos: Vector2) -> void:
+	trap_type = kind
+	position = world_pos.round()
+	add_to_group("traps")
+
+	var info = Config.TRAPS.get(kind, {})
+	radius = float(info.get("radius", 13.0))
+	triggers_left = int(info.get("max_triggers", 1))
+	hp = int(info.get("hp", 30))
+	max_hp = hp
+	attract_radius = float(info.get("attract_radius", 0.0))
+
+	var shadow := get_node("Shadow") as Sprite2D
+	shadow.texture = Art.get_blob_shadow(18, 7)
+
+	var sprite_node := get_node("Sprite") as Sprite2D
+	var anim_node := get_node("AnimSprite") as AnimatedSprite2D
+	var hp_bar_node := get_node("HpBar") as ColorRect
+	sprite_node.visible = false
+	anim_node.visible = false
+	hp_bar_node.visible = false
+	_sprite = null
+	_anim_sprite = null
+	_hp_bar = null
+
+	if kind == "trap_spike":
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
+			"traps/spike_sheet", 14, [3], [6, 8, 9, 10, 11, 13, 3], 18.0
+		)
+		_anim_sprite.position = Vector2.ZERO
+		_anim_sprite.scale = Vector2(0.75, 0.75)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
+
+	elif kind == "trap_snare":
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
+			"traps/snare_sheet", 4, [0], [1, 2, 3], 14.0
+		)
+		_anim_sprite.position = Vector2.ZERO
+		_anim_sprite.scale = Vector2(0.75, 0.75)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
+
+	elif kind == "trap_lure":
+		_sprite = sprite_node
+		_sprite.texture = Art.tex("fences/wood/post")
+		_sprite.offset = Vector2(0.0, -7.0)
+		_sprite.visible = true
+
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
+			"traps/lure_fire", 3, [0, 1, 2], [0, 1, 2], 9.0, true
+		)
+		_anim_sprite.scale = Vector2.ONE
+		_anim_sprite.position = Vector2(0.0, -17.0)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
+
+	else:
+		_sprite = sprite_node
+		_sprite.texture = Art.get_icon_texture(kind)
+		_sprite.offset = Vector2.ZERO
+		_sprite.visible = true
+
+	if kind == "trap_lure":
+		_hp_bar = hp_bar_node
+		_hp_bar.size.x = 18.0
+		_hp_bar.visible = false
+
+
+func _build_sheet_frames(
+	tex_key: String,
+	count: int,
+	idle_indices: Array,
+	spring_indices: Array,
+	fps: float,
+	loop_idle: bool = false
+) -> SpriteFrames:
+	var strip := Art.tex(tex_key)
+	var fw := floorf(float(strip.get_width()) / float(maxi(1, count)))
+	var fh := float(strip.get_height())
+
+	var sf := SpriteFrames.new()
+	if sf.has_animation(&"default"):
+		sf.remove_animation(&"default")
+
+	sf.add_animation(&"idle")
+	sf.set_animation_speed(&"idle", fps)
+	sf.set_animation_loop(&"idle", loop_idle)
+	for idx in idle_indices:
+		var at := AtlasTexture.new()
+		at.atlas = strip
+		at.region = Rect2(float(int(idx)) * fw, 0.0, fw, fh)
+		sf.add_frame(&"idle", at)
+
+	sf.add_animation(&"spring")
+	sf.set_animation_speed(&"spring", fps)
+	sf.set_animation_loop(&"spring", false)
+	for idx in spring_indices:
+		var at2 := AtlasTexture.new()
+		at2.atlas = strip
+		at2.region = Rect2(float(int(idx)) * fw, 0.0, fw, fh)
+		sf.add_frame(&"spring", at2)
+
+	return sf
+
+
+func _draw() -> void:
+	if trap_type == "trap_lure" and is_active():
+		var pulse_r := 16.0 + fmod(_pulse_time * 36.0, 32.0)
+		var alpha := clampf(1.0 - (pulse_r - 16.0) / 32.0, 0.0, 1.0) * 0.45
+		draw_arc(Vector2(0.0, -4.0), pulse_r, 0.0, TAU, 24, Color(1.0, 0.84, 0.34, alpha), 1.0)
+
+
+func is_active() -> bool:
+	if _break_delay >= 0.0:
+		return false
+	if trap_type == "trap_lure":
+		return hp > 0
+	return triggers_left > 0
+
+
+func take_lure_damage(dmg: int) -> void:
+	if trap_type != "trap_lure" or hp <= 0:
+		return
+
+	hp = maxi(0, hp - dmg)
+	_flash_time = 0.12
+	_set_visual_tint(Color(1.5, 0.8, 0.8, 1.0))
+
+	if _hp_bar != null:
+		_hp_bar.visible = hp < max_hp and hp > 0
+		_hp_bar.size.x = maxf(1.0, 18.0 * (float(hp) / float(maxi(1, max_hp))))
+
+	if hp <= 0:
+		remove_from_group("traps")
+		broken.emit(self)
+		queue_free()
+
+
+func step_trap(delta: float, enemies: Array) -> void:
+	# let the snap animation finish before freeing the bear trap
+	if _break_delay >= 0.0:
+		_break_delay -= delta
+		modulate.a = clampf(_break_delay / 0.35, 0.0, 1.0)
+		if _break_delay <= 0.0:
+			remove_from_group("traps")
+			broken.emit(self)
+			queue_free()
+		return
+
+	if not is_active():
+		return
+
+	if _flash_time > 0.0:
+		_flash_time = maxf(0.0, _flash_time - delta)
+		if _flash_time <= 0.0:
+			_set_visual_tint(Color.WHITE)
+
+	if trap_type == "trap_lure":
+		_pulse_time += delta
+		queue_redraw()
+		return
+
+	if cooldown_left > 0.0:
+		cooldown_left = maxf(0.0, cooldown_left - delta)
+		return
+
+	var info = Config.TRAPS.get(trap_type, {})
+	for enemy in enemies:
+		if not is_instance_valid(enemy) or not enemy.is_alive():
+			continue
+
+		if enemy.position.distance_to(position) <= radius:
+			if trap_type == "trap_spike":
+				enemy.take_hit(int(info.get("damage", 3)), Vector2.ZERO, false)
+				cooldown_left = float(info.get("cooldown", 0.7))
+			elif trap_type == "trap_snare":
+				enemy.take_hit(int(info.get("damage", 1)), Vector2.ZERO, false)
+				enemy.apply_root(float(info.get("root_time", 3.5)))
+
+			triggers_left -= 1
+			_flash_time = 0.16
+			triggered.emit(self, enemy)
+			_set_visual_tint(Color(1.4, 0.85, 0.85, 1.0))
+
+			if _anim_sprite != null:
+				_anim_sprite.play(&"spring")
+
+			if triggers_left <= 0:
+				_break_delay = 0.55 if trap_type == "trap_snare" else 0.35
+			return
+
+
+func _set_visual_tint(col: Color) -> void:
+	if _sprite != null:
+		_sprite.modulate = col
+	if _anim_sprite != null:
+		_anim_sprite.modulate = col
